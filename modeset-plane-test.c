@@ -91,8 +91,6 @@ static int modeset_create_fb(int fd, struct buffer_object *bo)
 	uint32_t handles[4] = {0}, pitches[4] = {0}, offsets[4] = {0};
 	int ret;
 
-	
-
 	create.width = bo->width;
 	create.height = bo->height;
 	create.bpp = 32;
@@ -101,38 +99,14 @@ static int modeset_create_fb(int fd, struct buffer_object *bo)
 	bo->pitch = create.pitch;
 	bo->size = create.size;
 	bo->handle = create.handle;
-
+	drmModeAddFB(fd, bo->width, bo->height, 24, 32, bo->pitch,
+			   bo->handle, &bo->fb_id);
 
 	map.handle = create.handle;
 	drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &map);
 
 	bo->vaddr = mmap(0, create.size, PROT_READ | PROT_WRITE,
 			MAP_SHARED, fd, map.offset);
-
-
-
-
-#if 0
-	drmModeAddFB(fd, bo->width, bo->height, 24, 32, bo->pitch,
-			   bo->handle, &bo->fb_id);
-#else
-	offsets[0] = 0;
-	handles[0] = bo->handle;
-	pitches[0] = bo->pitch;
-
-	ret = drmModeAddFB2(fd, bo->height, bo->height,
-		    DRM_FORMAT_XRGB8888, handles, pitches, offsets,&bo->fb_id, 0);
-	if(ret ){
-		printf("drmModeAddFB2 return err %d\n",ret);
-		return 0;
-	}
-
-	printf("bo->pitch %d\n",bo->pitch);
-
-			   
-#endif
-
-
 
 	memset(bo->vaddr, 0xff, bo->size);
 
@@ -318,63 +292,55 @@ int main(int argc, char **argv)
 	crtc_id = res->crtcs[0];
 	conn_id = res->connectors[0];
 
-	drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
 	ret = drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
 	if (ret) {
 		printf("failed to set client cap\n");
 		return -1;
 	}
+
 	plane_res = drmModeGetPlaneResources(fd);
 	plane_id = plane_res->planes[0];
-	
 	printf("get plane count %d,plane_id %d\n",plane_res->count_planes,plane_id);
 	
-
-
 	conn = drmModeGetConnector(fd, conn_id);
 	buf.width = conn->modes[0].hdisplay;
 	buf.height = conn->modes[0].vdisplay;
 
-	printf("get connector nanme %s,hdisplay %d, vdisplay %d,vrefresh %d\n",conn->modes[0].name,conn->modes[0].vdisplay,\
+	printf("get connector nanme %s,hdisplay %d, vdisplay %d,vrefresh %d\n",
+		conn->modes[0].name,conn->modes[0].vdisplay,
 		conn->modes[0].hdisplay,conn->modes[0].vrefresh);
 	modeset_create_fb(fd, &buf);
-	drmModeSetCrtc(fd, crtc_id, buf.fb_id,0, 0, &conn_id, 1, &conn->modes[0]);
-	write_color(&buf,0xff00ff00);
+	drmModeSetCrtc(fd, crtc_id, buf.fb_id, 0, 0, &conn_id, 1, &conn->modes[0]);
+//	write_color(&buf, 0xff00ff00);
+	write_color(&buf, 0xff000000);
+	getchar();
 
-
-	//getchar();
-			
-	
 	// -------------------  overlay 1
 	plane_buf[0].width = 200;
 	plane_buf[0].height = 200;
 	modeset_create_fb(fd, &plane_buf[0]);
 	write_color(&plane_buf[0],0x00ff0000);
-
 	ret = drmModeSetPlane(fd, plane_res->planes[1], crtc_id, plane_buf[0].fb_id, 0,
-			50, 50, plane_buf[0].width,plane_buf[0].height,
+			50, 50, plane_buf[0].width, plane_buf[0].height,
 			0, 0, (plane_buf[0].width) << 16, (plane_buf[0].height) << 16);
 	if(ret < 0)
 		printf("drmModeSetPlane err %d\n",ret);
-	
+	getchar();
 
 	// -------------------  overlay 2
 	plane_buf[1].width = 200;
 	plane_buf[1].height = 200;
 	modeset_create_fb(fd, &plane_buf[1]);
 	write_color(&plane_buf[1],0x0000ff00);
-
 	ret = drmModeSetPlane(fd, plane_res->planes[2], crtc_id, plane_buf[1].fb_id, 0,
 			200, 200, plane_buf[1].width,plane_buf[1].height,
 			0, 0, plane_buf[1].width << 16, plane_buf[1].height << 16);
 	if(ret < 0)
 		printf("drmModeSetPlane err %d\n",ret);
 	
-	
 	get_planes_property(fd,plane_res);
-	
-
-
+	printf("press any key continue\n");
+	getchar();
 
 	// -------------------  HEO	
 	plane_buf[2].width = 200;
@@ -382,10 +348,6 @@ int main(int argc, char **argv)
 	modeset_create_fb(fd, &plane_buf[2]);
 	write_color_half(&plane_buf[2],0x000000ff,0x00000000);
 
-	//printf("press any key continue\n");
-	//getchar();
-	
-	
 	x = 0;
 	y = 0;
 	set_alpha(fd,plane_res->planes[3],255);
